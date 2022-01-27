@@ -1,5 +1,4 @@
 # 国密智能密码钥匙工具
-## 个人测试使用
 
 ## 依赖
 
@@ -26,3 +25,6 @@ cd skftool.app/Contents/MacOS
 install_name_tool -change libgm3000.1.0.dylib @executable_path/../Frameworks/libgm3000.1.0.dylib  skftool
 ```
 
+## 个人测试使用
+![image](https://user-images.githubusercontent.com/30715970/151285250-16e74993-e820-4a91-9d0b-120404c2dd56.png)
+![image](https://user-images.githubusercontent.com/30715970/151285261-78f9fbaa-02f8-4583-89f4-8becc2890262.png)
