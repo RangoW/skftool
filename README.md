@@ -3,7 +3,7 @@
 ## 依赖
 
 - libgm3000.1.0.dylib 龙脉动态库
-- libcrypto.1.1.dylib 国密openssl库
+- libcrypto.1.1.dylib 国密openssl库: https://github.com/guanzhi/GmSSL-V2
 
 ## 打包 dmg
 
