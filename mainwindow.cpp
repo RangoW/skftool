@@ -6,9 +6,11 @@
 #include <QMessageBox>
 #include <QTextStream>
 
-#include "skfapi.h"
+#include <openssl/gmskf.h>
+#include <openssl/err.h>
 
 QStringList enum_device();
+int gen_csr(unsigned char *cn, HCONTAINER hct, BYTE *x, BYTE *y, char* csr);
 
 QMap<ULONG, QString> errcode = {
     {SAR_OK, "成功"},
@@ -62,22 +64,30 @@ QMap<ULONG, QString> errcode = {
     {SAR_NO_ROOM, "存储空间不足"},
     {SAR_FILE_NOT_EXIST, "文件不存在"},
     {SAR_REACH_MAX_CONTAINER_COUNT, "已达到最大可管理容器数"},
-    {SAR_SECURITY_INVALID, "安全状态不满足"},
-    {SAR_OFFSET_VOER_FILE, "指针移到超过文件长度"},
-    {SAR_CONTAINER_NOT_FOUND, "容器不存在"},
-    {SAR_CONTAINER_EXIST, "容器已存在"},
-    {SAR_AUTH_LOCKED, "设备认证锁定"},
-    {SAR_ECCENCERR, " ECC加密错误"},
+//    {SAR_SECURITY_INVALID, "安全状态不满足"},
+//    {SAR_OFFSET_VOER_FILE, "指针移到超过文件长度"},
+//    {SAR_CONTAINER_NOT_FOUND, "容器不存在"},
+//    {SAR_CONTAINER_EXIST, "容器已存在"},
+//    {SAR_AUTH_LOCKED, "设备认证锁定"},
+//    {SAR_ECCENCERR, " ECC加密错误"},
 };
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow) {
+  int ret = SKF_LoadLibrary(LPSTR("/usr/local/lib/libgm3000.1.0.dylib"), NULL);
+  if (ret != SAR_OK) {
+      printf("load skf failed: %s\n", ERR_error_string(ERR_get_error(), NULL));
+      exit(1);
+  }
   ui->setupUi(this);
   ui->csr_name->setPlaceholderText("填写csr名称");
   init_device_combobox();
 }
 
-MainWindow::~MainWindow() { delete ui; }
+MainWindow::~MainWindow() { 
+  SKF_UnloadLibrary(); 
+  delete ui; 
+}
 
 void MainWindow::init_device_combobox() {
   QList<QString> devList = enum_device();
@@ -106,12 +116,14 @@ QStringList enum_device() {
   LPSTR devNames = nullptr;
   ulRslt = SKF_EnumDev(present, devNames, &ulSize);
   if (ulRslt || !ulSize) {
+    printf("SKF_EnumDev ret: %x\n", ulRslt);
     return list;
   }
 
   LPSTR tmp = devNames = (LPSTR)calloc(ulSize, sizeof(char));
   ulRslt = SKF_EnumDev(present, devNames, &ulSize);
   if (ulRslt) {
+    printf("SKF_EnumDev failed: %s\n", ERR_error_string(ERR_get_error(), NULL));
     free(devNames);
     return list;
   }
@@ -119,7 +131,8 @@ QStringList enum_device() {
   // must loop the whole devs by ulSize
   for (ULONG i = 0; i < ulSize - 1; i++) {
     if ('\0' == tmp[i]) {
-      list.append(QString(devNames));
+      std::string n = (char*)devNames;
+      list.append(QString::fromStdString(n));
       devNames += i + 1;
     }
   }
@@ -152,21 +165,21 @@ void MainWindow::on_import_btn_clicked() {
     goto err;
   }
 
-  uRet = SKF_ConnectDev(currentDev.toLocal8Bit().data(), &hdev);
+  uRet = SKF_ConnectDev((LPSTR)currentDev.toLocal8Bit().data(), &hdev);
   if (uRet != SAR_OK) {
     msgBox.setText("未连接到指定的设备：" + currentDev + ", " + errcode[uRet]);
     msgBox.exec();
     goto err;
   }
 
-  uRet = SKF_OpenApplication(hdev, defaultApp.toLocal8Bit().data(), &hApp);
+  uRet = SKF_OpenApplication(hdev, (LPSTR)defaultApp.toLocal8Bit().data(), &hApp);
   if (uRet != SAR_OK) {
     msgBox.setText("打开默认应用程序：VHSMAPP, " + errcode[uRet]);
     msgBox.exec();
     goto err;
   }
 
-  uRet = SKF_VerifyPIN(hApp, USER_TYPE, pin.toLocal8Bit().data(), &retry);
+  uRet = SKF_VerifyPIN(hApp, USER_TYPE, (LPSTR)pin.toLocal8Bit().data(), &retry);
   if (uRet != SAR_OK) {
     msgBox.setText(QString::asprintf("口令验证失败, %s, 剩余重试次数: %d",
                                      errcode[uRet].toStdString().data(),
@@ -175,7 +188,7 @@ void MainWindow::on_import_btn_clicked() {
     goto err;
   }
 
-  uRet = SKF_OpenContainer(hApp, defaultCT.toLocal8Bit().data(), &hCt);
+  uRet = SKF_OpenContainer(hApp, (LPSTR)defaultCT.toLocal8Bit().data(), &hCt);
   if (uRet != SAR_OK) {
     msgBox.setText("打开默认容器：vhsm-container, " + errcode[uRet]);
     msgBox.exec();
@@ -217,7 +230,7 @@ void MainWindow::on_gencsr_btn_clicked() {
   QString pin = ui->pin_edit->text();
   ULONG retry = 0;
   HCONTAINER hCt = nullptr;
-  QString defaultCT("vhsm-container");
+  QString defaultCT("mpki-test");
   ECCPUBLICKEYBLOB pBlob;
   memset(&pBlob, 0, sizeof(ECCPUBLICKEYBLOB));
   char csr[1024] = {0};
@@ -228,21 +241,21 @@ void MainWindow::on_gencsr_btn_clicked() {
     goto err;
   }
 
-  uRet = SKF_ConnectDev(currentDev.toLocal8Bit().data(), &hdev);
+  uRet = SKF_ConnectDev((LPSTR)currentDev.toLocal8Bit().data(), &hdev);
   if (uRet != SAR_OK) {
     msgBox.setText("未连接到指定的设备：" + currentDev + ", " + errcode[uRet]);
     msgBox.exec();
     goto err;
   }
 
-  uRet = SKF_OpenApplication(hdev, defaultApp.toLocal8Bit().data(), &hApp);
+  uRet = SKF_OpenApplication(hdev, (LPSTR)defaultApp.toLocal8Bit().data(), &hApp);
   if (uRet != SAR_OK) {
     msgBox.setText("打开默认应用程序：VHSMAPP, " + errcode[uRet]);
     msgBox.exec();
     goto err;
   }
 
-  uRet = SKF_VerifyPIN(hApp, USER_TYPE, pin.toLocal8Bit().data(), &retry);
+  uRet = SKF_VerifyPIN(hApp, USER_TYPE, (LPSTR)pin.toLocal8Bit().data(), &retry);
   if (uRet != SAR_OK) {
     msgBox.setText(QString::asprintf("口令验证失败, %s, 剩余重试次数: %d",
                                      errcode[uRet].toStdString().data(),
@@ -251,7 +264,7 @@ void MainWindow::on_gencsr_btn_clicked() {
     goto err;
   }
 
-  uRet = SKF_OpenContainer(hApp, defaultCT.toLocal8Bit().data(), &hCt);
+  uRet = SKF_OpenContainer(hApp, (LPSTR)defaultCT.toLocal8Bit().data(), &hCt);
   if (uRet != SAR_OK) {
     msgBox.setText("打开默认容器：vhsm-container, " + errcode[uRet]);
     msgBox.exec();
