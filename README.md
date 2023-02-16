@@ -28,3 +28,5 @@ install_name_tool -change libgm3000.1.0.dylib @executable_path/../Frameworks/lib
 ## 个人测试使用
 ![image](https://user-images.githubusercontent.com/30715970/151285250-16e74993-e820-4a91-9d0b-120404c2dd56.png)
 ![image](https://user-images.githubusercontent.com/30715970/151285261-78f9fbaa-02f8-4583-89f4-8becc2890262.png)
+![image](https://user-images.githubusercontent.com/30715970/219286610-bab20f2a-84f8-4148-b710-78fea018e5f1.png)
+
